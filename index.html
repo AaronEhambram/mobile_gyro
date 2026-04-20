@@ -3,18 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile Gyroscope Tracker</title>
+    <title>Mobile Gyroscope Plane Game</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f4f4f9;
             color: #333;
+            position: relative;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #init-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
-            margin: 0;
         }
         h1 { margin-bottom: 10px; }
         p { text-align: center; max-width: 300px; color: #666; }
@@ -31,73 +38,225 @@
             margin-bottom: 30px;
         }
         button:active { background-color: #0056b3; }
-
-        .data-container {
-            background: white;
-            padding: 20px 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            text-align: left;
+ 
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #f4f4f9;
         }
-        .axis {
-            font-size: 22px;
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
             font-weight: bold;
-            margin: 10px 0;
-            font-family: monospace;
+            color: #333;
         }
-        .label { color: #888; font-size: 16px; }
+        #reset-btn {
+            position: absolute;
+            top: 110px;
+            right: 10px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 100;
+        }
+        #reset-btn:active { background-color: #c82333; }
+        #recalibrate-btn {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 100;
+        }
+        #recalibrate-btn:active { background-color: #218838; }
+
     </style>
 </head>
 <body>
 
-    <h1>Gyroscope Data</h1>
-    <p>Tap the button below to allow this site to access your phone's orientation sensors.</p>
-
-    <button id="permission-btn">Enable Gyroscope</button>
-
-    <div class="data-container">
-        <div class="axis"><span class="label">Alpha (Z): </span><span id="alpha">0.00</span>°</div>
-        <div class="axis"><span class="label">Beta  (X): </span><span id="beta">0.00</span>°</div>
-        <div class="axis"><span class="label">Gamma (Y): </span><span id="gamma">0.00</span>°</div>
+    <div id="init-container">
+        <h1>Gyroscope Plane Game</h1>
+        <p>Tap the button below to allow this site to access your phone's orientation sensors and start the game.</p>
+        <button id="permission-btn">Enable Gyroscope</button>
     </div>
 
-    <script>
-        const btn = document.getElementById('permission-btn');
-        const alphaSpan = document.getElementById('alpha');
-        const betaSpan = document.getElementById('beta');
-        const gammaSpan = document.getElementById('gamma');
+    <canvas id="game-canvas"></canvas>
+    <div id="score">Score: 0</div>
+    <button id="reset-btn">Reset Score</button>
+    <button id="recalibrate-btn">Recalibrate</button>
 
-        // Function to update the DOM with sensor data
-        function handleOrientation(event) {
-            // event.alpha: rotation around Z axis (compass direction) [0 to 360]
-            // event.beta: front-to-back tilt [-180 to 180]
-            // event.gamma: left-to-right tilt [-90 to 90]
-            
-            alphaSpan.textContent = event.alpha ? event.alpha.toFixed(2) : '0.00';
-            betaSpan.textContent = event.beta ? event.beta.toFixed(2) : '0.00';
-            gammaSpan.textContent = event.gamma ? event.gamma.toFixed(2) : '0.00';
-        }
+<script>
 
-        btn.addEventListener('click', () => {
-            // Check if the device is iOS 13+ which requires requesting permission
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            window.addEventListener('deviceorientation', handleOrientation);
-                            btn.style.display = 'none'; // Hide button once tracking starts
-                        } else {
-                            alert('Permission to access gyroscope was denied.');
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                // Non-iOS 13+ devices (like older iOS, Android, or desktop)
-                window.addEventListener('deviceorientation', handleOrientation);
-                btn.style.display = 'none';
-            }
+const btn = document.getElementById('permission-btn');
+const initContainer = document.getElementById('init-container');
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const resetBtn = document.getElementById('reset-btn');
+const recalibrateBtn = document.getElementById('recalibrate-btn');
+
+let plane = {x: 0, y: 0};
+let vx = 0, vy = 0;
+let circles = [];
+let score = 0;
+let initialBeta = 0, initialGamma = 0;
+let lastBeta = 0, lastGamma = 0;
+let gameStarted = false;
+let lastSpawn = 0;
+const speedFactor = 2;
+const planeSize = 20;
+const circleRadius = 20;
+
+// Function to update plane movement
+function handleOrientation(event) {
+    lastBeta = event.beta || 0;
+    lastGamma = event.gamma || 0;
+    if (!gameStarted) {
+        initialBeta = lastBeta;
+        initialGamma = lastGamma;
+        gameStarted = true;
+    }
+    let deltaBeta = lastBeta - initialBeta;
+    let deltaGamma = lastGamma - initialGamma;
+    vx = deltaGamma * speedFactor;
+    vy = deltaBeta * speedFactor;
+}
+
+function update() {
+    plane.x += vx;
+    plane.y += vy;
+    // clamp
+    plane.x = Math.max(planeSize, Math.min(canvas.width - planeSize, plane.x));
+    plane.y = Math.max(planeSize, Math.min(canvas.height - planeSize, plane.y));
+    // spawn circles
+    let now = Date.now();
+    if (now - lastSpawn > 3000 && circles.length < 2) {
+        circles.push({
+            x: Math.random() * (canvas.width - 2*circleRadius) + circleRadius,
+            y: Math.random() * (canvas.height - 2*circleRadius) + circleRadius
         });
-    </script>
+        lastSpawn = now;
+    }
+    // check collisions
+    circles = circles.filter(circle => {
+        let dx = plane.x - circle.x;
+        let dy = plane.y - circle.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < circleRadius + planeSize) {
+            score += 10;
+            scoreEl.textContent = 'Score: ' + score;
+            if (navigator.vibrate) navigator.vibrate(100);
+            return false;
+        }
+        return true;
+    });
+}
+
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // draw circles
+    ctx.fillStyle = 'red';
+    circles.forEach(circle => {
+        ctx.beginPath();
+        ctx.arc(circle.x, circle.y, circleRadius, 0, 2*Math.PI);
+        ctx.fill();
+    });
+    // draw plane
+    ctx.save();
+    ctx.translate(plane.x, plane.y);
+    // Calculate angle based on velocity for realistic plane rotation
+    let angle = Math.atan2(vy, vx);
+    ctx.rotate(angle);
+    
+    // Draw plane using simple rectangles
+    ctx.fillStyle = 'blue';
+    
+    // Main body (vertical fuselage) - centered at x=0
+    ctx.fillRect(-planeSize * 0.2, -planeSize * 2.5, planeSize * 0.4, planeSize * 4.5);
+    
+    // Wings (horizontal rectangle) - centered at x=0
+    ctx.fillRect(-planeSize * 2.0, -planeSize * 0.2, planeSize * 4.0, planeSize * 0.4);
+    
+    // Right tail - using path instead
+    ctx.beginPath();
+    ctx.rect(planeSize * 0.2, planeSize * 1.8, planeSize * 1.2, planeSize * 0.5);
+    ctx.fill();
+    
+    // Left tail - using path instead
+    ctx.beginPath();
+    ctx.rect(-planeSize * 1.4, planeSize * 1.8, planeSize * 1.2, planeSize * 0.5);
+    ctx.fill();
+    
+    // Nose (yellow triangle pointing up)
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.moveTo(0, -planeSize * 2.8);
+    ctx.lineTo(-planeSize * 0.2, -planeSize * 2.2);
+    ctx.lineTo(planeSize * 0.2, -planeSize * 2.2);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    window.addEventListener('deviceorientation', handleOrientation);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    plane.x = canvas.width / 2;
+    plane.y = canvas.height / 2;
+    initContainer.style.display = 'none';
+    gameLoop();
+}
+
+btn.addEventListener('click', () => {
+    // Check if the device is iOS 13+ which requires requesting permission
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        
+        DeviceOrientationEvent.requestPermission()
+            .then(permissionState => {
+                if (permissionState === 'granted') {
+                    startGame();
+                } else {
+                    alert('Permission to access gyroscope was denied.');
+                }
+            })
+            .catch(console.error);
+    } else {
+        // Non-iOS 13+ devices (like older iOS, Android, or desktop)
+        startGame();
+    }
+});
+
+resetBtn.addEventListener('click', () => {
+    score = 0;
+    scoreEl.textContent = 'Score: 0';
+    circles = [];
+});
+
+recalibrateBtn.addEventListener('click', () => {
+    // Recalibrate to current gyro values
+    if (gameStarted) {
+        initialBeta = lastBeta;
+        initialGamma = lastGamma;
+    }
+});
+</script>
 </body>
 </html>
