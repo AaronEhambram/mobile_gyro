@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Gyroscope Tracker</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        h1 { margin-bottom: 10px; }
+        p { text-align: center; max-width: 300px; color: #666; }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        button:active { background-color: #0056b3; }
+
+        .data-container {
+            background: white;
+            padding: 20px 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            text-align: left;
+        }
+        .axis {
+            font-size: 22px;
+            font-weight: bold;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .label { color: #888; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <h1>Gyroscope Data</h1>
+    <p>Tap the button below to allow this site to access your phone's orientation sensors.</p>
+
+    <button id="permission-btn">Enable Gyroscope</button>
+
+    <div class="data-container">
+        <div class="axis"><span class="label">Alpha (Z): </span><span id="alpha">0.00</span>°</div>
+        <div class="axis"><span class="label">Beta  (X): </span><span id="beta">0.00</span>°</div>
+        <div class="axis"><span class="label">Gamma (Y): </span><span id="gamma">0.00</span>°</div>
+    </div>
+
+    <script>
+        const btn = document.getElementById('permission-btn');
+        const alphaSpan = document.getElementById('alpha');
+        const betaSpan = document.getElementById('beta');
+        const gammaSpan = document.getElementById('gamma');
+
+        // Function to update the DOM with sensor data
+        function handleOrientation(event) {
+            // event.alpha: rotation around Z axis (compass direction) [0 to 360]
+            // event.beta: front-to-back tilt [-180 to 180]
+            // event.gamma: left-to-right tilt [-90 to 90]
+            
+            alphaSpan.textContent = event.alpha ? event.alpha.toFixed(2) : '0.00';
+            betaSpan.textContent = event.beta ? event.beta.toFixed(2) : '0.00';
+            gammaSpan.textContent = event.gamma ? event.gamma.toFixed(2) : '0.00';
+        }
+
+        btn.addEventListener('click', () => {
+            // Check if the device is iOS 13+ which requires requesting permission
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                            btn.style.display = 'none'; // Hide button once tracking starts
+                        } else {
+                            alert('Permission to access gyroscope was denied.');
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Non-iOS 13+ devices (like older iOS, Android, or desktop)
+                window.addEventListener('deviceorientation', handleOrientation);
+                btn.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
